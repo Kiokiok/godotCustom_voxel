@@ -14,5 +14,11 @@ EntityInstancer::~EntityInstancer() {
     
 }
 
+void EntityInstancer::_bind_methods() {
+    
+    ClassDB::bind_method(D_METHOD("is_octant_available"), &EntityInstancer::is_octant_available);
+    ClassDB::bind_method(D_METHOD("get_octant_transforms"), &EntityInstancer::get_octant_transforms);
+    ClassDB::bind_method(D_METHOD("clear_octant"), &EntityInstancer::clear_octant);
 
+}
 }

@@ -30,6 +30,34 @@ class EntityInstancer : public Node3D {
     EntityInstancer();
     ~EntityInstancer();
 
+public:
+
+    /// @brief Does the octant have available tranform data to spawn entities
+    /// @param octantID 
+    /// @return 
+    bool is_octant_available(Vector3i octantID);
+
+    /// @brief Returns a list of transforms, stored as a list of floats
+    /// @param octantID 
+    /// @return 
+    Vector<float> get_octant_transforms(Vector3i octantID);
+
+    /// @brief Frees the memory used by an octant transforms
+    /// @param octantID 
+    void clear_octant(Vector3i octantID);
+
+
+    void store_transforms_data(PackedFloat32Array data);
+
+
+    HashMap<Vector3i, Vector<float>> storage;
+    
+    //Vector<Vector<float>> chunksStorage;
+
+
+    static void _bind_methods();
+
+
 // --- PROPERTIES
 
 

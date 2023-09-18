@@ -1036,6 +1036,11 @@ void VoxelInstancer::update_block_from_transforms(int block_index, Span<const Tr
 			// multimesh->set_as_bulk_array(bulk_array);
 			RenderingServer::get_singleton()->multimesh_set_buffer(multimesh->get_rid(), bulk_array);
 
+			// --- HIJACK !
+			// This is where we want to store the obtained transforms into our custom storage buffer
+
+
+
 			if (!block.multimesh_instance.is_valid()) {
 				block.multimesh_instance.create();
 				block.multimesh_instance.set_visible(is_visible());
