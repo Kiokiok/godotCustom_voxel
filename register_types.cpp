@@ -62,6 +62,8 @@
 #include "util/tasks/async_dependency_tracker.h"
 #include "util/tasks/godot/threaded_task_gd.h"
 
+#include "terrain/instancing/entity_instancer.h"
+
 #ifdef ZN_GODOT_EXTENSION
 #include "engine/voxel_engine_updater.h"
 #include "util/thread/godot_thread_helper.h"
@@ -196,6 +198,10 @@ void initialize_voxel_module(ModuleInitializationLevel p_level) {
 		ClassDB::register_class<gd::VoxelEngine>();
 
 		// Misc
+
+		// Cliffdivers
+
+		ClassDB::register_class<EntityInstancer>();
 
 		// Should be abstract, but isn't for compatibility with old versions that didn't have separate VoxelBlockyModel
 		// classes
