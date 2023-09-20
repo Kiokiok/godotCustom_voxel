@@ -196,6 +196,10 @@ void VoxelInstancer::_notification(int p_what) {
 }
 
 void VoxelInstancer::process() {
+
+	// Try to find the Entity Instancer 
+
+
 	process_generator_results();
 	if (_parent != nullptr && _library.is_valid() && _mesh_lod_distance > 0.f) {
 		process_mesh_lods();
@@ -1009,9 +1013,104 @@ void VoxelInstancer::update_block_from_transforms(int block_index, Span<const Tr
 			if (block.multimesh_instance.is_valid()) {
 				block.multimesh_instance.set_multimesh(Ref<MultiMesh>());
 				block.multimesh_instance.destroy();
+
+				// ----
+				// here we could maybe determine if the chunk has nosurface, and create a node nonetheless
+				// If the node is empty we could check in the c# layer and if the node exists and has no tranforms we can skip it
+				// else we can just wait 
+
 			}
 
 		} else {
+
+			// --- HIJACK !
+			// This is where we want to store the obtained transforms into our custom storage buffer
+
+			//PackedFloat32Array bulk_array;
+			//DirectMultiMeshInstance::make_transform_3d_bulk_array(transforms, bulk_array);
+
+			
+			//print_line(item->get_item_name());
+
+			
+
+			String name = item->get_item_name();
+			bool customPos = false;
+			int storage_id = 0;
+
+			if(name == "ground")
+			{
+				customPos = true;
+			}
+			if(name == "walls")
+			{
+				storage_id = 1;
+				customPos = true;
+			}
+
+			if(name == "ceil")
+			{
+				storage_id = 2;
+				customPos = true;
+			}
+
+			// We make the system optional so that we can still use VoxelInstancer to spawn some stuff like grass
+
+			if(customPos == true) // CUSTOM POSITION SYSTEM
+			{
+				HashMap<Vector3i, EntityInstancer*> instancers;
+
+				Vector3 loc = block_global_transform.origin;
+
+				for(int i = 0; i < transforms.size(); i++)
+				{
+					Transform3f trs = transforms[i];
+					
+					Vector3i octant = Vector3i(Math::floor((trs.origin.x + loc.x) / 32),Math::floor((trs.origin.y + loc.y) / 32),Math::floor((trs.origin.z + loc.z) / 32));
+
+					//octant.x = Math::floor(trs.origin.x / 32);
+					//octant.y = Math::floor(trs.origin.y / 32);
+					//octant.z = Math::floor(trs.origin.z / 32);
+					
+					if(instancers.has(octant) == false)
+					{
+						String str_id = String("({0}, {1}, {2})").format(varray(octant.x,octant.y, octant.z));
+						NodePath path = NodePath(str_id);
+						// If the EntityInstancer already exists, we use this one
+						if(has_node(path))
+						{
+							EntityInstancer* instance_exist = get_node_typed<EntityInstancer>(*this, path);
+							instancers[octant] = instance_exist;
+						}
+						else
+						{
+							EntityInstancer* inst = memnew(EntityInstancer);
+							instancers[octant] = inst;
+							inst->set_name(str_id);
+							add_child(inst);
+						}
+					}
+
+					// Not ideal but hey whatever
+					Transform3D trs_g = Transform3D(
+						trs.basis.rows[0].x,trs.basis.rows[0].y,trs.basis.rows[0].z,
+						trs.basis.rows[1].x,trs.basis.rows[1].y,trs.basis.rows[1].z,
+						trs.basis.rows[2].x,trs.basis.rows[2].y,trs.basis.rows[2].z,
+						trs.origin.x + loc.x,trs.origin.y + loc.y,trs.origin.z + loc.z);
+
+					
+					instancers[octant]->data[storage_id].append(trs_g);
+					instancers[octant]->initialized[storage_id] = true;
+					//instancers[octant]->trs_data_ground.append(trs_g);
+				}
+
+				instancers.clear();
+
+				return;
+			} // ---------- CUSTOM POSITION SYSTEM
+
+			
+
 			Ref<MultiMesh> multimesh = block.multimesh_instance.get_multimesh();
 			if (multimesh.is_null()) {
 				multimesh.instantiate();
@@ -1021,6 +1120,7 @@ void VoxelInstancer::update_block_from_transforms(int block_index, Span<const Tr
 			} else {
 				multimesh->set_visible_instance_count(-1);
 			}
+			
 			PackedFloat32Array bulk_array;
 			DirectMultiMeshInstance::make_transform_3d_bulk_array(transforms, bulk_array);
 			multimesh->set_instance_count(transforms.size());
@@ -1034,12 +1134,11 @@ void VoxelInstancer::update_block_from_transforms(int block_index, Span<const Tr
 
 			// TODO Waiting for Godot to expose the method on the resource object
 			// multimesh->set_as_bulk_array(bulk_array);
+
+			// We skip the updating of the multimesh
 			RenderingServer::get_singleton()->multimesh_set_buffer(multimesh->get_rid(), bulk_array);
 
-			// --- HIJACK !
-			// This is where we want to store the obtained transforms into our custom storage buffer
-
-
+		
 
 			if (!block.multimesh_instance.is_valid()) {
 				block.multimesh_instance.create();

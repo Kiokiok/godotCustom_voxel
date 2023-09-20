@@ -14,7 +14,6 @@
 #include "voxel_instance_library.h"
 #include "voxel_instance_library_multimesh_item.h"
 
-
 namespace zylann
 {
     
@@ -26,11 +25,10 @@ class EntityInstancer : public Node3D {
 
     
 // --- Constructor & Destructor
-
+public :
     EntityInstancer();
     ~EntityInstancer();
 
-public:
 
     /// @brief Does the octant have available tranform data to spawn entities
     /// @param octantID 
@@ -42,20 +40,43 @@ public:
     /// @return 
     Vector<float> get_octant_transforms(Vector3i octantID);
 
+    /// @brief Get the pointer to the transform array
+    /// @param octantID 
+    /// @return 
+    int64_t get_octant_transforms_direct(int64_t id);
+
+    /// @brief Get the size of the transform array
+    /// @return 
+    int64_t get_octant_transform_array_len(int64_t id);
+
+
+    // Might not be thread safe. Be careful
+    bool is_layer_initialized(int64_t id);
+
+    Transform3D get_trs_at(int64_t trs_id, int64_t arrayID);
+
+
     /// @brief Frees the memory used by an octant transforms
     /// @param octantID 
     void clear_octant(Vector3i octantID);
 
+    /// @brief Called by VoxelInstancer instead of multimesh
+    /// @param data 
+    void store_transforms_data(Span<const Transform3f> data);
 
-    void store_transforms_data(PackedFloat32Array data);
 
+    Vector<Transform3D> data[3] = {};
+    bool initialized[3] = {false, false, false};
 
-    HashMap<Vector3i, Vector<float>> storage;
+    HashMap<Vector3i, Vector<Transform3D>> storage;
     
     //Vector<Vector<float>> chunksStorage;
 
+    Mutex mut;
 
     static void _bind_methods();
+
+    
 
 
 // --- PROPERTIES

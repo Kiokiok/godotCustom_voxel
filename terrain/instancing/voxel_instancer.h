@@ -12,6 +12,8 @@
 #include "voxel_instance_generator.h"
 #include "voxel_instance_library.h"
 #include "voxel_instance_library_multimesh_item.h"
+#include "entity_instancer.h" 
+
 
 #ifdef TOOLS_ENABLED
 #include "../../editor/voxel_debug.h"
@@ -258,6 +260,9 @@ private:
 	float _mesh_lod_distance = 0.f;
 
 	std::shared_ptr<VoxelInstancerGeneratorTaskOutputQueue> _generator_results;
+
+	EntityInstancer* instancer; 
+
 
 #ifdef TOOLS_ENABLED
 	DebugRenderer _debug_renderer;
