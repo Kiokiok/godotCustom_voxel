@@ -42,6 +42,7 @@ def get_sources(env, is_editor_build):
         "generators/*.cpp",
         "generators/graph/*.cpp",
         "generators/simple/*.cpp",
+        "generators/multipass/*.cpp",
 
         "modifiers/*.cpp",
         "modifiers/godot/*.cpp",
@@ -66,12 +67,15 @@ def get_sources(env, is_editor_build):
         "util/noise/fast_noise_lite/*.cpp",
         "util/noise/gd_noise_range.cpp",
         "util/thread/thread.cpp",
+        "util/thread/spatial_lock_2d.cpp",
+        "util/thread/spatial_lock_3d.cpp",
         "util/tasks/*.cpp",
         "util/tasks/godot/*.cpp",
 
         "util/godot/classes/array_mesh.cpp",
         "util/godot/classes/concave_polygon_shape_3d.cpp",
         "util/godot/classes/geometry_2d.cpp",
+        "util/godot/classes/geometry_instance_3d.cpp",
         "util/godot/classes/input_event_key.cpp",
         "util/godot/classes/mesh.cpp",
         "util/godot/classes/multimesh.cpp",
@@ -111,6 +115,7 @@ def get_sources(env, is_editor_build):
             "editor/graph/*.cpp",
             "editor/blocky_library/*.cpp",
             "editor/blocky_library/types/*.cpp",
+            "editor/multipass/*.cpp",
 
             "util/godot/classes/editor_plugin.cpp",
             "util/godot/classes/editor_import_plugin.cpp",

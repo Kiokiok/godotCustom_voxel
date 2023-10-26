@@ -160,6 +160,13 @@ void VoxelTerrain::set_generator(Ref<VoxelGenerator> p_generator) {
 		return;
 	}
 
+	Ref<VoxelGenerator> prev_generator = get_generator();
+	if (prev_generator.is_valid()) {
+		prev_generator->clear_cache();
+		// TODO if we were to share this generator on multiple terrains, cache should not be entirely cleared. Instead,
+		// we should just remove the area from all paired viewers.
+	}
+
 	_data->set_generator(p_generator);
 
 	MeshingDependency::reset(_meshing_dependency, _mesher, p_generator);
@@ -280,9 +287,9 @@ void VoxelTerrain::_on_stream_params_changed() {
 }
 
 void VoxelTerrain::_on_gi_mode_changed() {
-	const GIMode gi_mode = get_gi_mode();
+	const GeometryInstance3D::GIMode gi_mode = get_gi_mode();
 	_mesh_map.for_each_block([gi_mode](VoxelMeshBlockVT &block) { //
-		block.set_gi_mode(DirectMeshInstance::GIMode(gi_mode));
+		block.set_gi_mode(gi_mode);
 	});
 }
 
@@ -686,7 +693,7 @@ void VoxelTerrain::stop_streamer() {
 void VoxelTerrain::reset_map() {
 	// Discard everything, to reload it all
 
-	_data->for_each_block([this](const Vector3i &bpos, const VoxelDataBlock &block) { //
+	_data->for_each_block_position([this](const Vector3i &bpos) { //
 		emit_data_block_unloaded(bpos);
 	});
 	_data->reset_maps();
@@ -700,6 +707,11 @@ void VoxelTerrain::reset_map() {
 
 	// No need to care about refcounts, we drop everything anyways. Will pair it back on next process.
 	_paired_viewers.clear();
+
+	Ref<VoxelGenerator> generator = get_generator();
+	if (generator.is_valid()) {
+		generator->clear_cache();
+	}
 }
 
 void VoxelTerrain::post_edit_voxel(Vector3i pos) {
@@ -708,6 +720,10 @@ void VoxelTerrain::post_edit_voxel(Vector3i pos) {
 
 void VoxelTerrain::try_schedule_mesh_update_from_data(const Box3i &box_in_voxels) {
 	ZN_PROFILE_SCOPE();
+	if (_mesher.is_null()) {
+		// No mesher, can't do updates
+		return;
+	}
 	// We pad by 1 because neighbor blocks might be affected visually (for example, baked ambient occlusion)
 	const Box3i mesh_box = box_in_voxels.padded(1).downscaled(get_mesh_block_size());
 	mesh_box.for_each_cell([this](Vector3i pos) {
@@ -795,16 +811,30 @@ void VoxelTerrain::_notification(int p_what) {
 		case NOTIFICATION_EXIT_TREE:
 			break;
 
-		case NOTIFICATION_ENTER_WORLD:
-			_mesh_map.for_each_block(SetWorldAction(*get_world_3d()));
-			break;
+		case NOTIFICATION_ENTER_WORLD: {
+			World3D *world = *get_world_3d();
+			_mesh_map.for_each_block(SetWorldAction(world));
+#ifdef TOOLS_ENABLED
+			if (debug_is_draw_enabled()) {
+				_debug_renderer.set_world(is_visible_in_tree() ? world : nullptr);
+			}
+#endif
+		} break;
 
 		case NOTIFICATION_EXIT_WORLD:
 			_mesh_map.for_each_block(SetWorldAction(nullptr));
+#ifdef TOOLS_ENABLED
+			_debug_renderer.set_world(nullptr);
+#endif
 			break;
 
 		case NOTIFICATION_VISIBILITY_CHANGED:
 			_mesh_map.for_each_block(SetParentVisibilityAction(is_visible()));
+#ifdef TOOLS_ENABLED
+			if (debug_is_draw_enabled()) {
+				_debug_renderer.set_world(is_visible_in_tree() ? *get_world_3d() : nullptr);
+			}
+#endif
 			break;
 
 		case NOTIFICATION_TRANSFORM_CHANGED: {
@@ -874,17 +904,18 @@ static void request_block_load(VolumeID volume_id, std::shared_ptr<StreamingDepe
 		// Directly generate the block without checking the stream
 		ERR_FAIL_COND(stream_dependency->generator.is_null());
 
-		GenerateBlockTask *task = ZN_NEW(GenerateBlockTask);
-		task->volume_id = volume_id;
-		task->position = block_pos;
-		task->lod_index = 0;
-		task->block_size = data_block_size;
-		task->stream_dependency = stream_dependency;
-		task->use_gpu = use_gpu;
-		task->data = voxel_data;
+		VoxelGenerator::BlockTaskParams params;
+		params.volume_id = volume_id;
+		params.block_position = block_pos;
+		params.block_size = data_block_size;
+		params.stream_dependency = stream_dependency;
+		params.use_gpu = use_gpu;
+		params.data = voxel_data;
 
 		init_sparse_grid_priority_dependency(
-				task->priority_dependency, block_pos, data_block_size, shared_viewers_data, volume_transform);
+				params.priority_dependency, block_pos, data_block_size, shared_viewers_data, volume_transform);
+
+		IThreadedTask *task = stream_dependency->generator->create_block_task(params);
 
 		scheduler.push_main_task(task);
 	}
@@ -1032,6 +1063,12 @@ void VoxelTerrain::process() {
 	process_viewers();
 	// process_received_data_blocks();
 	process_meshing();
+
+#ifdef TOOLS_ENABLED
+	if (debug_is_draw_enabled() && is_visible_in_tree()) {
+		process_debug_draw();
+	}
+#endif
 }
 
 void VoxelTerrain::process_viewers() {
@@ -1263,6 +1300,11 @@ void VoxelTerrain::process_viewer_data_box_change(
 	static thread_local std::vector<Vector3i> tls_missing_blocks;
 	static thread_local std::vector<Vector3i> tls_found_blocks_positions;
 
+	Ref<VoxelGenerator> generator = get_generator();
+	if (generator.is_valid()) {
+		generator->process_viewer_diff(viewer_id, new_data_box, prev_data_box);
+	}
+
 	// Unview blocks that just fell out of range
 	//
 	// TODO Any reason to unview old blocks before viewing new blocks?
@@ -1398,11 +1440,15 @@ void VoxelTerrain::apply_data_block_response(VoxelEngine::BlockDataOutput &ob) {
 	const Vector3i block_pos = ob.position;
 
 	if (ob.dropped) {
-		// That block was cancelled by the server, but we are still expecting it.
+		if (_loading_blocks.find(block_pos) == _loading_blocks.end()) {
+			// We are no longer expecting this block, ignore
+			return;
+		}
+		// That block was cancelled, but we are still expecting it.
 		// We'll have to request it again.
 		ZN_PRINT_VERBOSE(format("Received a block loading drop while we were still expecting it: "
 								"lod{} ({}, {}, {}), re-requesting it",
-				ob.lod_index, ob.position.x, ob.position.y, ob.position.z));
+				int(ob.lod_index), ob.position.x, ob.position.y, ob.position.z));
 
 		++_stats.dropped_block_loads;
 
@@ -1436,7 +1482,8 @@ void VoxelTerrain::apply_data_block_response(VoxelEngine::BlockDataOutput &ob) {
 
 	if (block.has_voxels() && block.get_voxels_const().get_size() != Vector3iUtil::create(_data->get_block_size())) {
 		// Voxel block size is incorrect, drop it
-		ZN_PRINT_ERROR("Block is different from expected size");
+		ZN_PRINT_ERROR(format("Block is different from expected size. Expected {}, got {}",
+				Vector3iUtil::create(_data->get_block_size()), block.get_voxels_const().get_size()));
 		++_stats.dropped_block_loads;
 		return;
 	}
@@ -1683,8 +1730,7 @@ void VoxelTerrain::apply_mesh_update(const VoxelEngine::BlockMeshOutput &ob) {
 		}
 	}
 
-	block->set_mesh(mesh, DirectMeshInstance::GIMode(get_gi_mode()),
-			RenderingServer::ShadowCastingSetting(get_shadow_casting()));
+	block->set_mesh(mesh, get_gi_mode(), RenderingServer::ShadowCastingSetting(get_shadow_casting()));
 
 	if (_material_override.is_valid()) {
 		block->set_material_override(_material_override);
@@ -1752,6 +1798,9 @@ void VoxelTerrain::set_bounds(Box3i box) {
 	Box3i bounds_in_voxels =
 			box.clipped(Box3i::from_center_extents(Vector3i(), Vector3iUtil::create(constants::MAX_VOLUME_EXTENT)));
 
+	const int smallest_dimension = get_data_block_size();
+	bounds_in_voxels.size = math::max(bounds_in_voxels.size, Vector3iUtil::create(smallest_dimension));
+
 	// Round to block size
 	bounds_in_voxels = bounds_in_voxels.snapped(get_data_block_size());
 
@@ -1767,6 +1816,8 @@ void VoxelTerrain::set_bounds(Box3i box) {
 		}
 	}
 	// TODO Editor gizmo bounds
+
+	update_configuration_warnings();
 }
 
 Box3i VoxelTerrain::get_bounds() const {
@@ -1802,9 +1853,89 @@ void VoxelTerrain::get_configuration_warnings(PackedStringArray &warnings) const
 									.format(varray(generator->get_class())));
 		}
 	}
+
+	if (get_bounds().is_empty()) {
+		warnings.append(String("Terrain bounds have an empty size."));
+	}
 }
 
 #endif
+
+// DEBUG LAND
+
+void VoxelTerrain::debug_set_draw_enabled(bool enabled) {
+#ifdef TOOLS_ENABLED
+	_debug_draw_enabled = enabled;
+	if (_debug_draw_enabled) {
+		if (is_inside_tree()) {
+			_debug_renderer.set_world(is_visible_in_tree() ? *get_world_3d() : nullptr);
+		}
+	} else {
+		_debug_renderer.clear();
+		// _debug_mesh_update_items.clear();
+		// _debug_edit_items.clear();
+	}
+#endif
+}
+
+bool VoxelTerrain::debug_is_draw_enabled() const {
+#ifdef TOOLS_ENABLED
+	return _debug_draw_enabled;
+#else
+	return false;
+#endif
+}
+
+void VoxelTerrain::debug_set_draw_flag(DebugDrawFlag flag_index, bool enabled) {
+#ifdef TOOLS_ENABLED
+	ERR_FAIL_INDEX(flag_index, DEBUG_DRAW_FLAGS_COUNT);
+	if (enabled) {
+		_debug_draw_flags |= (1 << flag_index);
+	} else {
+		_debug_draw_flags &= ~(1 << flag_index);
+	}
+#endif
+}
+
+bool VoxelTerrain::debug_get_draw_flag(DebugDrawFlag flag_index) const {
+#ifdef TOOLS_ENABLED
+	ERR_FAIL_INDEX_V(flag_index, DEBUG_DRAW_FLAGS_COUNT, false);
+	return (_debug_draw_flags & (1 << flag_index)) != 0;
+#else
+	return false;
+#endif
+}
+
+#ifdef TOOLS_ENABLED
+
+void VoxelTerrain::process_debug_draw() {
+	ZN_PROFILE_SCOPE();
+
+	DebugRenderer &dr = _debug_renderer;
+	dr.begin();
+
+	const Transform3D parent_transform = get_global_transform();
+
+	// Volume bounds
+	if (debug_get_draw_flag(DEBUG_DRAW_VOLUME_BOUNDS)) {
+		const Box3i bounds_in_voxels = get_bounds();
+		const float bounds_in_voxels_len = Vector3(bounds_in_voxels.size).length();
+
+		if (bounds_in_voxels_len < 10000) {
+			const Vector3 margin = Vector3(1, 1, 1) * bounds_in_voxels_len * 0.0025f;
+			const Vector3 size = bounds_in_voxels.size;
+			const Transform3D local_transform(
+					Basis().scaled(size + margin * 2.f), Vector3(bounds_in_voxels.pos) - margin);
+			dr.draw_box(parent_transform * local_transform, DebugColors::ID_VOXEL_BOUNDS);
+		}
+	}
+
+	dr.end();
+}
+
+#endif
+
+// BINDING LAND
 
 Vector3i VoxelTerrain::_b_voxel_to_data_block(Vector3 pos) const {
 	return _data->voxel_to_block(math::floor_to_int(pos));

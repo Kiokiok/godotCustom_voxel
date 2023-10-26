@@ -4,6 +4,7 @@
 #include "../../util/dstack.h"
 #include "../../util/godot/classes/camera_3d.h"
 #include "../../util/godot/classes/collision_shape_3d.h"
+#include "../../util/godot/classes/engine.h"
 #include "../../util/godot/classes/mesh_instance_3d.h"
 #include "../../util/godot/classes/multimesh.h"
 #include "../../util/godot/classes/node.h"
@@ -19,6 +20,10 @@
 #include "voxel_instance_component.h"
 #include "voxel_instance_library_scene_item.h"
 #include "voxel_instancer_rigidbody.h"
+
+#ifdef TOOLS_ENABLED
+#include "../../editor/camera_cache.h"
+#endif
 
 // Only needed for debug purposes, otherwise RenderingServer is used directly
 #include "../../util/godot/classes/multimesh_instance_3d.h"
@@ -352,18 +357,33 @@ const VoxelInstancer::Layer &VoxelInstancer::get_layer_const(int id) const {
 	return it->second;
 }
 
+namespace {
+Vector3 get_global_camera_position(const Node &node) {
+#ifdef TOOLS_ENABLED
+	if (Engine::get_singleton()->is_editor_hint()) {
+		return gd::get_3d_editor_camera_position();
+	}
+#endif
+	const Viewport *viewport = node.get_viewport();
+	ZN_ASSERT_RETURN_V(viewport != nullptr, Vector3());
+	const Camera3D *camera = viewport->get_camera_3d();
+	if (camera == nullptr) {
+		return Vector3();
+	}
+	return camera->get_global_position();
+}
+} // namespace
+
 void VoxelInstancer::process_mesh_lods() {
 	ZN_PROFILE_SCOPE();
 	ERR_FAIL_COND(_library.is_null());
 
+	// Note, this form of LOD must be visual only. It supports only one camera.
+
 	// Get viewer position
-	const Viewport *viewport = get_viewport();
-	const Camera3D *camera = viewport->get_camera_3d();
-	if (camera == nullptr) {
-		return;
-	}
 	const Transform3D gtrans = get_global_transform();
-	const Vector3 cam_pos_local = (gtrans.affine_inverse() * camera->get_global_transform()).origin;
+	const Vector3 cam_pos_global = get_global_camera_position(*this);
+	const Vector3 cam_pos_local = gtrans.affine_inverse().xform(cam_pos_global);
 
 	ERR_FAIL_COND(_parent == nullptr);
 	const int block_size = 1 << _parent_mesh_block_size_po2;
@@ -372,10 +392,10 @@ void VoxelInstancer::process_mesh_lods() {
 		// Hardcoded LOD thresholds for now.
 		// Can't really use pixel density because view distances are controlled by the main surface LOD octree
 		FixedArray<float, 4> coeffs;
-		coeffs[0] = 0;
-		coeffs[1] = 0.1;
-		coeffs[2] = 0.25;
-		coeffs[3] = 0.5;
+		coeffs[0] = 0.1;
+		coeffs[1] = 0.25;
+		coeffs[2] = 0.625;
+		coeffs[3] = 2.0;
 		const float hysteresis = 1.05;
 
 		const float max_distance = _mesh_lod_distance;
@@ -385,9 +405,10 @@ void VoxelInstancer::process_mesh_lods() {
 
 			for (unsigned int j = 0; j < lod.mesh_lod_distances.size(); ++j) {
 				MeshLodDistances &mld = lod.mesh_lod_distances[j];
-				const float lod_max_distance = (1 << j) * max_distance;
-				mld.exit_distance_squared = lod_max_distance * lod_max_distance * coeffs[j];
-				mld.enter_distance_squared = hysteresis * mld.exit_distance_squared;
+				const float lod_max_distance = (1 << lod_index) * max_distance;
+				mld.enter_distance_squared = lod_max_distance * lod_max_distance * coeffs[j];
+				// Exit distance is slightly higher so it has less chance to oscillate often when near the threshold
+				mld.exit_distance_squared = hysteresis * mld.enter_distance_squared;
 			}
 		}
 	}
@@ -426,21 +447,23 @@ void VoxelInstancer::process_mesh_lods() {
 		const float distance_squared = cam_pos_local.distance_squared_to(block_center_local);
 
 		if (block.current_mesh_lod + 1 < mesh_lod_count &&
-				distance_squared > lod.mesh_lod_distances[block.current_mesh_lod].enter_distance_squared) {
+				distance_squared > lod.mesh_lod_distances[block.current_mesh_lod].exit_distance_squared) {
 			// Decrease detail
 			++block.current_mesh_lod;
 			Ref<MultiMesh> multimesh = block.multimesh_instance.get_multimesh();
 			if (multimesh.is_valid()) {
+				ZN_PROFILE_SCOPE();
 				multimesh->set_mesh(settings.mesh_lods[block.current_mesh_lod]);
 			}
 		}
 
 		if (block.current_mesh_lod > 0 &&
-				distance_squared < lod.mesh_lod_distances[block.current_mesh_lod].exit_distance_squared) {
+				distance_squared < lod.mesh_lod_distances[block.current_mesh_lod - 1].enter_distance_squared) {
 			// Increase detail
 			--block.current_mesh_lod;
 			Ref<MultiMesh> multimesh = block.multimesh_instance.get_multimesh();
 			if (multimesh.is_valid()) {
+				ZN_PROFILE_SCOPE();
 				multimesh->set_mesh(settings.mesh_lods[block.current_mesh_lod]);
 			}
 		}
@@ -672,6 +695,7 @@ void VoxelInstancer::update_layer_meshes(int layer_id) {
 		block.multimesh_instance.set_render_layer(settings.render_layer);
 		block.multimesh_instance.set_material_override(settings.material_override);
 		block.multimesh_instance.set_cast_shadows_setting(settings.shadow_casting_setting);
+		block.multimesh_instance.set_gi_mode(settings.gi_mode);
 		Ref<MultiMesh> multimesh = block.multimesh_instance.get_multimesh();
 		if (multimesh.is_valid()) {
 			Ref<Mesh> mesh;
@@ -1129,7 +1153,7 @@ void VoxelInstancer::update_block_from_transforms(int block_index, Span<const Tr
 			// `multimesh_set_buffer` BY DOWNLOADING BACK THE BUFFER FROM THE GRAPHICS CARD which can incur a very harsh
 			// performance penalty
 			if (settings.mesh_lod_count > 0) {
-				multimesh->set_mesh(settings.mesh_lods[settings.mesh_lod_count - 1]);
+				multimesh->set_mesh(settings.mesh_lods[block.current_mesh_lod]);
 			}
 
 			// TODO Waiting for Godot to expose the method on the resource object
@@ -1150,6 +1174,7 @@ void VoxelInstancer::update_block_from_transforms(int block_index, Span<const Tr
 			block.multimesh_instance.set_transform(block_global_transform);
 			block.multimesh_instance.set_material_override(settings.material_override);
 			block.multimesh_instance.set_cast_shadows_setting(settings.shadow_casting_setting);
+			block.multimesh_instance.set_gi_mode(settings.gi_mode);
 		}
 
 		// Update bodies

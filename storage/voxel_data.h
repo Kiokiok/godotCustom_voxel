@@ -5,8 +5,8 @@
 #include "../modifiers/voxel_modifier_stack.h"
 #include "../streams/voxel_stream.h"
 #include "../util/thread/mutex.h"
+#include "../util/thread/spatial_lock_3d.h"
 #include "voxel_data_map.h"
-#include "voxel_spatial_lock.h"
 
 namespace zylann::voxel {
 
@@ -164,21 +164,33 @@ public:
 		}
 	}
 
-	// void op(Vector3i bpos, const VoxelDataBlock &block)
 	template <typename F>
-	void for_each_block(F op) const {
+	void for_each_block_position(F op) const {
 		const unsigned int lod_count = get_lod_count();
 		for (unsigned int lod_index = 0; lod_index < lod_count; ++lod_index) {
 			const Lod &lod = _lods[lod_index];
 			RWLockRead rlock(lod.map_lock);
-			lod.map.for_each_block(op);
+			lod.map.for_each_block_position(op);
 		}
 	}
 
 	// void op(Vector3i bpos, const VoxelDataBlock &block)
+	// template <typename F>
+	// void for_each_block_r(F op) const {
+	// 	const unsigned int lod_count = get_lod_count();
+	// 	for (unsigned int lod_index = 0; lod_index < lod_count; ++lod_index) {
+	// 		const Lod &lod = _lods[lod_index];
+	// 		SpatialLock3D::Read srlock(lod.spatial_lock, BoxBounds3i::from_everywhere());
+	// 		RWLockRead rlock(lod.map_lock);
+	// 		lod.map.for_each_block(op);
+	// 	}
+	// }
+
+	// void op(Vector3i bpos, const VoxelDataBlock &block)
 	template <typename F>
-	void for_each_block_at_lod(F op, unsigned int lod_index) const {
+	void for_each_block_at_lod_r(F op, unsigned int lod_index) const {
 		const Lod &lod = _lods[lod_index];
+		SpatialLock3D::Read srlock(lod.spatial_lock, BoxBounds3i::from_everywhere());
 		RWLockRead rlock(lod.map_lock);
 		lod.map.for_each_block(op);
 	}
@@ -214,7 +226,7 @@ public:
 
 	// Unloads data blocks at specified positions of LOD0. If some of them were modified and `to_save` is not null,
 	// their data will be returned for the caller to save.
-	void unload_blocks(Span<const Vector3i> positions, std::vector<BlockToSave> *to_save);
+	// void unload_blocks(Span<const Vector3i> positions, std::vector<BlockToSave> *to_save);
 
 	// If the block at the specified LOD0 position exists and is modified, marks it as non-modified and returns a copy
 	// of its data to save. Returns true if there is something to save.
@@ -245,17 +257,21 @@ public:
 
 	// Gets blocks with voxels at the given LOD and indexes them in a grid. This will query every location
 	// intersecting the box at the specified LOD, so if the area is large, you may want to do a broad check first.
-	// WARNING: data isn't locked, you have to keep a shared reference to VoxelData in order to use VoxelSpatialLock.
+	// WARNING: data isn't locked, you have to keep a shared reference to VoxelData in order to use SpatialLock3D.
 	void get_blocks_grid(VoxelDataGrid &grid, Box3i box_in_voxels, unsigned int lod_index) const;
 
 	// TODO Areas that use this accessor might as well move their logic in this class
-	VoxelSpatialLock &get_spatial_lock(unsigned int lod_index) const;
+	SpatialLock3D &get_spatial_lock(unsigned int lod_index) const;
 
 	// Tests the presence of edited blocks in the given area by looking up LOD mips. It can report false positives due
 	// to the broad nature of the check, but runs a lot faster than a full test. This is only usable with volumes
 	// using LOD mips (edited blocks have half-resolution counterparts all the way up to maximum LOD).
+
 	bool has_blocks_with_voxels_in_area_broad_mip_test(Box3i box_in_voxels) const;
 
+	// Access voxels of a specific block.
+	// WARNING: you must hold the spatial lock before calling this, and until you're done working on such blocks.
+	// Can return null.
 	std::shared_ptr<VoxelBufferInternal> try_get_block_voxels(Vector3i bpos);
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -301,7 +317,7 @@ private:
 		RWLock map_lock;
 		// This should be used when reading or writing voxels/metadata in blocks. It uses block coordinates as
 		// spatial unit.
-		mutable VoxelSpatialLock spatial_lock;
+		mutable SpatialLock3D spatial_lock;
 	};
 
 	static void pre_generate_box(Box3i voxel_box, Span<Lod> lods, unsigned int data_block_size, bool streaming,

@@ -14,6 +14,7 @@
 #include "../../util/godot/core/keyboard.h"
 #include "../../util/godot/funcs.h"
 #include "../about_window.h"
+#include "../camera_cache.h"
 #include "../graph/voxel_graph_node_inspector_wrapper.h"
 #include "voxel_terrain_editor_task_indicator.h"
 
@@ -176,6 +177,10 @@ void VoxelTerrainEditorPlugin::set_node(VoxelNode *node) {
 		if (vlt != nullptr) {
 			vlt->debug_set_draw_enabled(false);
 		}
+		VoxelTerrain *vt = Object::cast_to<VoxelTerrain>(_node);
+		if (vt != nullptr) {
+			vt->debug_set_draw_enabled(false);
+		}
 	}
 
 	_node = node;
@@ -195,6 +200,7 @@ void VoxelTerrainEditorPlugin::set_node(VoxelNode *node) {
 		_node->connect("tree_exited", ZN_GODOT_CALLABLE_MP(this, VoxelTerrainEditorPlugin, _on_terrain_tree_exited));
 
 		VoxelLodTerrain *vlt = Object::cast_to<VoxelLodTerrain>(_node);
+		VoxelTerrain *vt = Object::cast_to<VoxelTerrain>(_node);
 
 		generate_menu_items(_menu_button, vlt != nullptr);
 
@@ -205,6 +211,10 @@ void VoxelTerrainEditorPlugin::set_node(VoxelNode *node) {
 			vlt->debug_set_draw_flag(VoxelLodTerrain::DEBUG_DRAW_OCTREE_BOUNDS, _show_octree_bounds);
 			vlt->debug_set_draw_flag(VoxelLodTerrain::DEBUG_DRAW_MESH_UPDATES, _show_mesh_updates);
 			vlt->debug_set_draw_flag(VoxelLodTerrain::DEBUG_DRAW_MODIFIER_BOUNDS, _show_modifier_bounds);
+
+		} else if (vt != nullptr) {
+			vt->debug_set_draw_enabled(true);
+			vt->debug_set_draw_flag(VoxelTerrain::DEBUG_DRAW_VOLUME_BOUNDS, true);
 		}
 	}
 }
@@ -219,6 +229,10 @@ void VoxelTerrainEditorPlugin::_zn_make_visible(bool visible) {
 		if (vlt != nullptr) {
 			vlt->debug_set_draw_enabled(visible);
 		}
+		VoxelTerrain *vt = Object::cast_to<VoxelTerrain>(_node);
+		if (vt != nullptr) {
+			vt->debug_set_draw_enabled(visible);
+		}
 	}
 
 	// TODO There are deselection problems I cannot fix cleanly!
@@ -232,6 +246,8 @@ EditorPlugin::AfterGUIInput VoxelTerrainEditorPlugin::_zn_forward_3d_gui_input(
 		Camera3D *p_camera, const Ref<InputEvent> &p_event) {
 	VoxelEngine::get_singleton().set_viewer_distance(_editor_viewer_id, p_camera->get_far());
 	_editor_camera_last_position = p_camera->get_global_transform().origin;
+
+	gd::set_3d_editor_camera_cache(p_camera);
 
 	if (_editor_viewer_follows_camera) {
 		VoxelEngine::get_singleton().set_viewer_position(_editor_viewer_id, _editor_camera_last_position);

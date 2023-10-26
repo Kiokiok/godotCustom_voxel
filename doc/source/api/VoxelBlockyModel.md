@@ -2,6 +2,8 @@
 
 Inherits: [Resource](https://docs.godotengine.org/en/stable/classes/class_resource.html)
 
+Inherited by: [VoxelBlockyModelCube](VoxelBlockyModelCube.md), [VoxelBlockyModelEmpty](VoxelBlockyModelEmpty.md), [VoxelBlockyModelMesh](VoxelBlockyModelMesh.md)
+
 Model stored in [VoxelBlockyLibrary](VoxelBlockyLibrary.md) and used by [VoxelMesherBlocky](VoxelMesherBlocky.md).
 
 ## Description: 
@@ -18,6 +20,7 @@ Type      | Name                                         | Default
 `AABB[]`  | [collision_aabbs](#i_collision_aabbs)        | []                
 `int`     | [collision_mask](#i_collision_mask)          | 1                 
 `Color`   | [color](#i_color)                            | Color(1, 1, 1, 1) 
+`bool`    | [culls_neighbors](#i_culls_neighbors)        | true              
 `bool`    | [random_tickable](#i_random_tickable)        | false             
 `int`     | [transparency_index](#i_transparency_index)  | 0                 
 `bool`    | [transparent](#i_transparent)                | false             
@@ -62,6 +65,10 @@ Collision mask used for box-based collision [VoxelBoxMover](VoxelBoxMover.md) an
 
 Color of the model. It will be used to modulate its color when built into a voxel mesh.
 
+- [bool](https://docs.godotengine.org/en/stable/classes/class_bool.html)<span id="i_culls_neighbors"></span> **culls_neighbors** = true
+
+If enabled, this voxel culls the faces of its neighbors. Disabling can be useful for denser transparent voxels, such as foliage.
+
 - [bool](https://docs.godotengine.org/en/stable/classes/class_bool.html)<span id="i_random_tickable"></span> **random_tickable** = false
 
 If enabled, voxels having this ID in the TYPE channel will be used by [VoxelToolTerrain.run_blocky_random_tick](VoxelToolTerrain.md#i_run_blocky_random_tick).
@@ -99,4 +106,4 @@ Sets a material override for a specific surface of the model. It allows to use t
 
 Enables or disables mesh-based collision on a specific surface. It allows a model to have solid parts and others where players can pass through.
 
-_Generated on Sep 12, 2023_
+_Generated on Oct 15, 2023_

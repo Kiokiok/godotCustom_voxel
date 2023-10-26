@@ -18,6 +18,7 @@ Semver is not yet in place, so each version can have breaking changes, although 
     - Updated FastNoise2 to 0.10.0-alpha
     - Started an experimental type system for the blocky voxels workflow. However it is not fully functional, its API may change in the future or have parts removed.
     - Added experimental `VoxelAStarGrid3D` for grid-based pathfinding on blocky voxels 
+    - Added experimental `VoxelGeneratorMultipassCB` to implement column-based generation in multiple passes that works across chunks
     - Voxel engine processing no longer stops when the SceneTree is paused
     - `VoxelGeneratorGraph`:
         - Added `Spots2D` and `Spots3D` nodes, optimized for generating "ore patches"
@@ -30,9 +31,13 @@ Semver is not yet in place, so each version can have breaking changes, although 
     - `VoxelTerrain`:
         - Added `VoxelTerrainMultiplayerSynchronizer`, which simplifies replication using Godot's high-level multiplayer API
         - Added `is_area_meshed` as an alternative to `VoxelTool.is_area_editable` for games using mesh colliders
+        - Added `do_path` to build or carve "worms" of varying radius
+        - Editor: added warning when bounds are empty
     - `VoxelTool`:
         - Added `smooth_sphere`, which smoothens terrain in a spherical area using box blur. Smooth/SDF terrain only. (Thanks to Piratux for the idea and initial implementation)
         - Separated `paste` into `paste` and `paste_masked` functions. The latter performs masking using a specific channel and value.
+    - `VoxelToolTerrain`:
+        - Raycasting a terrain using `VoxelMesherBlocky` now takes collision boxes into account (thanks to Lry722)
     - `VoxelToolLodTerrain`:
         - Added support for `paste`
     - `VoxelMesherCubes`:
@@ -45,17 +50,20 @@ Semver is not yet in place, so each version can have breaking changes, although 
         - Added `get_all_item_ids()` to allow iterating over all items of a library
     - `VoxelLibraryMultiMeshItem `:
         - Added `render_layer` property (thanks to m4nu3lf)
+        - Added `gi_mode` property
         - Node groups on the template scene are now added to instance colliders if present
     - `VoxelLodTerrain`:
         - Added debug drawing for modifier bounds
         - Added `is_area_meshed` as an alternative to `VoxelTool.is_area_editable` for games using mesh colliders
         - Terrain now updates when the `material` property is assigned in the editor
+        - Editor: added warning when bounds are empty
     - `VoxelVoxLoader`:
         - Added parameter to allow loading data in a custom channel (instead of the color channel)
     - `VoxelBlockyModel`:
         - Added 3D preview in editor
         - Added ability to rotate the model in editor (not just for preview, actually rotate the baked model)
         - Changed names to be handled with `Resource.name`, so it also shows them in the list of models in the editor
+        - Added `culls_neighbors` property to control whether the sides of a model can cull sides of other models (thanks to spazzylemons)
 
 - Fixes
     - Fixed editor not shrinking properly on narrow screens with a terrain selected. Stats appearing in bottom panel will use a scrollbar if the area is too small.
@@ -65,15 +73,23 @@ Semver is not yet in place, so each version can have breaking changes, although 
         - Fixed graph not always saving when saving the scene
         - Fixed shader generator crash when a node has an unconnected input
         - Fixed cellular noise when used on GPU
+    - `VoxelGraphFunction`:
+        - Fixed default input values were not properly loaded
+        - Fixed unexpected "missing node" error when more than one custom inputs are used
     - `VoxelInstancer`:
         - Fixed crash when hiding the node in the editor
         - Fixed crash when closing the scene while an instancer node is selected
     - `VoxelInstanceLibrary`: 
         - Fixed `find_item_by_name` was not finding items
         - Fixed newly added items in the editor rendering badly by default when the terrain doesn't have LOD. For now they always default to LOD 0 instead of LOD 2.
+    - `VoxelTerrain`: Fixed crash when the terrain tries to update while it has no mesher assigned
     - `VoxelLodTerrain`: Fixed error spam when re-generating or destroying the terrain
     - `VoxelStreamRegionFiles`: Fixed `block_size_po2` wasn't working correctly
     - `VoxelToolTerrain`: Fixed terrain was not marked as modified when setting voxel metadata
+    - `VoxelToolLodTerrain`: 
+        - Fixed `stamp_sdf` wasn't working due to an error when providing a baked mesh
+        - Fixed `set_voxel` was creating artifacts
+        - Fixed `separate_floating_chunks` was creating artifacts
     - `VoxelMeshSDF`: fixed saved resource was not loading properly
 
 - Breaking changes
@@ -81,6 +97,8 @@ Semver is not yet in place, so each version can have breaking changes, although 
         - Changed the list of models to be handled by a typed array instead of individual properties. When opened in the editor, old resources will get converted. Re-save them to make the conversion persist.
     - `VoxelBlockyModel`:
         - The class was split into several subclasses for each type of geometry. When opened in the editor, old resources will get converted, but only if they are part of a `VoxelBlockyLibaray`. They won't work if they are individual resource files.
+    - `VoxelNode`:
+        - Removed `GIMode` enum, replaced with `GeometryInstance3D.GIMode`
 
 
 1.0 - 12/03/2023 - `godot4.0`
