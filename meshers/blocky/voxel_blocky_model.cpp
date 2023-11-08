@@ -512,8 +512,7 @@ void VoxelBlockyModel::_bind_methods() {
 			D_METHOD("set_transparency_index", "transparency_index"), &VoxelBlockyModel::set_transparency_index);
 	ClassDB::bind_method(D_METHOD("get_transparency_index"), &VoxelBlockyModel::get_transparency_index);
 
-	ClassDB::bind_method(
-			D_METHOD("set_culls_neighbors", "culls_neighbors"), &VoxelBlockyModel::set_culls_neighbors);
+	ClassDB::bind_method(D_METHOD("set_culls_neighbors", "culls_neighbors"), &VoxelBlockyModel::set_culls_neighbors);
 	ClassDB::bind_method(D_METHOD("get_culls_neighbors"), &VoxelBlockyModel::get_culls_neighbors);
 
 	ClassDB::bind_method(D_METHOD("is_random_tickable"), &VoxelBlockyModel::is_random_tickable);
@@ -531,7 +530,7 @@ void VoxelBlockyModel::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_collision_mask"), &VoxelBlockyModel::get_collision_mask);
 
 	// Bound for editor purposes
-	ClassDB::bind_method(D_METHOD("rotate_90"), &VoxelBlockyModel::_b_rotate_90);
+	ClassDB::bind_method(D_METHOD("rotate_90", "axis", "clockwise"), &VoxelBlockyModel::_b_rotate_90);
 
 	// TODO Update to StringName in Godot 4
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "color"), "set_color", "get_color");

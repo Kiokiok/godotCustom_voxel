@@ -186,6 +186,14 @@ public:
 		_spatial_lock = nullptr;
 	}
 
+	inline VoxelBufferInternal *get_block_no_lock(Vector3i position) {
+		return get_block(position);
+	}
+
+	inline unsigned int get_block_size_po2() const {
+		return _block_size_po2;
+	}
+
 private:
 	inline unsigned int get_block_size() const {
 		return _block_size;

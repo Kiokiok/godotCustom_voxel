@@ -11,7 +11,7 @@
 #include "../../meshers/blocky/voxel_mesher_blocky.h"
 #include "../../storage/voxel_buffer_gd.h"
 #include "../../storage/voxel_data.h"
-#include "../../util/container_funcs.h"
+#include "../../util/containers/container_funcs.h"
 #include "../../util/godot/classes/base_material_3d.h" // For property hint in release mode in GDExtension...
 #include "../../util/godot/classes/concave_polygon_shape_3d.h"
 #include "../../util/godot/classes/engine.h"
@@ -227,24 +227,8 @@ void VoxelTerrain::set_mesh_block_size(unsigned int mesh_block_size) {
 
 	_mesh_block_size_po2 = po2;
 
-	if (_instancer != nullptr) {
-		VoxelInstancer &instancer = *_instancer;
-		_mesh_map.for_each_block([&instancer, this](VoxelMeshBlockVT &block) { //
-			instancer.on_mesh_block_exit(block.position, 0);
-			if (block.is_loaded) {
-				emit_mesh_block_exited(block.position);
-			}
-		});
-	} else {
-		_mesh_map.for_each_block([this](VoxelMeshBlockVT &block) { //
-			if (block.is_loaded) {
-				emit_mesh_block_exited(block.position);
-			}
-		});
-	}
-
 	// Unload all mesh blocks regardless of refcount
-	_mesh_map.clear();
+	clear_mesh_map();
 
 	// Make paired viewers re-view the new meshable area
 	for (unsigned int i = 0; i < _paired_viewers.size(); ++i) {
@@ -377,7 +361,7 @@ unsigned int VoxelTerrain::get_max_view_distance() const {
 	return _max_view_distance_voxels;
 }
 
-void VoxelTerrain::set_max_view_distance(unsigned int distance_in_voxels) {
+void VoxelTerrain::set_max_view_distance(int distance_in_voxels) {
 	ERR_FAIL_COND(distance_in_voxels < 0);
 	_max_view_distance_voxels = distance_in_voxels;
 
@@ -690,6 +674,26 @@ void VoxelTerrain::stop_streamer() {
 	_blocks_pending_load.clear();
 }
 
+void VoxelTerrain::clear_mesh_map() {
+	if (_instancer != nullptr) {
+		VoxelInstancer &instancer = *_instancer;
+		_mesh_map.for_each_block([&instancer, this](VoxelMeshBlockVT &block) { //
+			instancer.on_mesh_block_exit(block.position, 0);
+			if (block.is_loaded) {
+				emit_mesh_block_exited(block.position);
+			}
+		});
+	} else {
+		_mesh_map.for_each_block([this](VoxelMeshBlockVT &block) { //
+			if (block.is_loaded) {
+				emit_mesh_block_exited(block.position);
+			}
+		});
+	}
+
+	_mesh_map.clear();
+}
+
 void VoxelTerrain::reset_map() {
 	// Discard everything, to reload it all
 
@@ -698,7 +702,7 @@ void VoxelTerrain::reset_map() {
 	});
 	_data->reset_maps();
 
-	_mesh_map.clear();
+	clear_mesh_map();
 
 	_loading_blocks.clear();
 	_blocks_pending_load.clear();
