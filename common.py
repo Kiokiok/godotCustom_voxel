@@ -54,6 +54,7 @@ def get_sources(env, is_editor_build):
 
         "engine/*.cpp",
         "engine/gpu/*.cpp",
+        "engine/detail_rendering/*.cpp",
 
         "edition/*.cpp",
         "shaders/*.cpp",
@@ -90,12 +91,14 @@ def get_sources(env, is_editor_build):
 
         "util/godot/core/string.cpp",
         "util/godot/core/variant.cpp",
+        "util/godot/core/packed_arrays.cpp",
 
         "util/godot/direct_mesh_instance.cpp",
         "util/godot/direct_multimesh_instance.cpp",
         "util/godot/direct_static_body.cpp",
         "util/godot/shader_material_pool.cpp",
-        "util/godot/funcs.cpp",
+
+        "util/io/*.cpp",
 
         # Thirdparty
 

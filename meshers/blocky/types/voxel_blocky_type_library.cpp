@@ -260,7 +260,7 @@ static bool parse_attribute_value(
 
 	} else if (vv.get_type() == Variant::INT) {
 		const int raw_value = vv;
-		ERR_FAIL_COND_V_MSG(raw_value >= 0, false, "Attribute integer value cannot be negative.");
+		ERR_FAIL_COND_V_MSG(raw_value < 0, false, "Attribute integer value cannot be negative.");
 		out_attrib_value = raw_value;
 
 	} else if (vv.get_type() == Variant::BOOL) {
@@ -587,8 +587,13 @@ bool VoxelBlockyTypeLibrary::parse_voxel_id(const String &p_str, VoxelID &out_id
 
 		result = tokenizer.get(token);
 		ZN_ASSERT_RETURN_V(result == VoxelIDTokenizer::TOKEN, false);
+		ZN_ASSERT_RETURN_V(token.type == VoxelIDToken::EQUALS, false);
+
+		result = tokenizer.get(token);
+		ZN_ASSERT_RETURN_V(result == VoxelIDTokenizer::TOKEN, false);
+
 		if (token.type == VoxelIDToken::INTEGER) {
-			ZN_ASSERT_RETURN_V(token.integer_value >= VoxelBlockyAttribute::MAX_VALUES, false);
+			ZN_ASSERT_RETURN_V(token.integer_value < VoxelBlockyAttribute::MAX_VALUES, false);
 			out_id.variant_key.attribute_values[attribute_index] = token.integer_value;
 
 		} else if (token.type == VoxelIDToken::BOOLEAN) {
